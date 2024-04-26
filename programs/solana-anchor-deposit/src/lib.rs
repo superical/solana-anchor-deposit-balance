@@ -6,34 +6,64 @@ declare_id!("5cSanSreu1HumAHVu5xnRcfSTytNyMcmQr83ksHMp6rf");
 pub mod solana_anchor_deposit {
     use super::*;
 
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+    const MAX_BALANCE: u64 = 1000;
+
+    pub fn initialize(ctx: Context<InitializeDeposit>, amount: u64) -> Result<()> {
+        let balance_account = &mut ctx.accounts.balance_account;
+        balance_account.balance += amount;
+
         Ok(())
     }
 
     pub fn deposit(ctx: Context<Deposit>, amount: u64) -> Result<()> {
-        // let balance_account = &mut ctx.accounts.balance_account;
+        if amount == 0 || amount % 100 != 0 {
+            return Err(ErrorCode::InvalidAmount.into());
+        }
+
         let balance_account = &mut ctx.accounts.balance_account;
-        let depositor = &ctx.accounts.depositor;
-
-        msg!("Depositing: {}", amount);
-        msg!("Depositor Account: {:?}", depositor.to_account_info().key);
-        msg!("Balance Account: {:?}", balance_account.to_account_info().key);
-
         balance_account.balance += amount;
+
+        if balance_account.balance > MAX_BALANCE {
+            return Err(ErrorCode::MaxBalanceExceeded.into());
+        }
+
         Ok(())
     }
 }
 
-#[derive(Accounts)]
-pub struct Initialize {}
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Invalid deposit amount")]
+    InvalidAmount,
+    #[msg("Exceeded the max balance")]
+    MaxBalanceExceeded,
+}
 
 #[derive(Accounts)]
-pub struct Deposit<'info> {
-    #[account(init, payer = depositor, space = 8 + 8)]
+pub struct InitializeDeposit<'info> {
+    #[account(
+    init,
+    seeds = [depositor.key().as_ref()],
+    bump,
+    payer = depositor,
+    space = 8 + 8
+    )]
     pub balance_account: Account<'info, BalanceAccount>,
     #[account(mut)]
     pub depositor: Signer<'info>,
     pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct Deposit<'info> {
+    #[account(
+    mut,
+    seeds = [depositor.key().as_ref()],
+    bump,
+    )]
+    pub balance_account: Account<'info, BalanceAccount>,
+    #[account(mut)]
+    pub depositor: Signer<'info>,
 }
 
 #[account]
